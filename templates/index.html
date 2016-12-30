@@ -1,6 +1,14 @@
 <html>
     <head></head>
     <body>
-        Template, {{.Name}} ...
+        <p>Template, {{.Name}}</p>
+
+        <p>
+            {{if .MongoStatus}}
+                <p>MongoConnection is active</p>
+            {{else}}
+                <p>MongoConnection is dead</p>
+            {{end}}
+        </p>
     </body>
 </html>
