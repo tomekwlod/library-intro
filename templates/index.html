@@ -1,14 +1,49 @@
 <html>
     <head></head>
     <body>
-        <p>Template, {{.Name}}</p>
+        <form id="search-form" onsubmit="return false;">
+            <input type="text" name="search" />
+            <input type="submit" value="Search" onclick="submitSearch()" />
+        </form>
 
-        <p>
-            {{if .MongoStatus}}
-                <p>MongoConnection is active</p>
-            {{else}}
-                <p>MongoConnection is dead</p>
-            {{end}}
-        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Author</th>
+                    <th>Year</th>
+                    <th>Id</th>
+                </tr>
+            </thead>
+            <tbody id="search-results"></tbody>
+        </table>
+
+        <script type="text/javascript" src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+        <script type="text/javascript">
+            function submitSearch() {
+                $.ajax({
+                    url: "/search",
+                    method: "POST",
+                    data: $("£search-form").serialize(),
+                    success: function(rawData) {
+                        var parsed = JSON.parse(rawData);
+
+                        if (!parsed) return;
+
+                        var searchResults = $("#search-results");
+
+                        searchResults.empty();
+
+                        parsed.forEach(function(result){
+                            var row = $("<tr><td>" + result.Title + "</td><td>" + result.Author + "</td><td>" + result.Year + "</td><td>" + result.ID + "</td></tr>");
+                            
+                            searchResults.append(row);
+                        });
+                    }
+                });
+
+                return false;
+            }
+        </script>
     </body>
 </html>
