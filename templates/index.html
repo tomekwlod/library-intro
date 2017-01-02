@@ -2,7 +2,7 @@
     <head></head>
     <body>
         <form id="search-form" onsubmit="return false;">
-            <input type="text" name="search" />
+            <input name="search" />
             <input type="submit" value="Search" onclick="submitSearch()" />
         </form>
 
@@ -21,10 +21,11 @@
         <script type="text/javascript" src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
         <script type="text/javascript">
             function submitSearch() {
+                
                 $.ajax({
                     url: "/search",
                     method: "POST",
-                    data: $("£search-form").serialize(),
+                    data: $("#search-form").serialize(),
                     success: function(rawData) {
                         var parsed = JSON.parse(rawData);
 
