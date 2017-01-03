@@ -14,9 +14,10 @@ import (
 	"net/url"
 )
 
+var db *mgo.Database
+
 type Page struct {
-	Name        string
-	MongoStatus bool
+	Name string
 }
 
 type SearchResult struct {
@@ -52,21 +53,12 @@ type BookDocument struct {
 func main() {
 	templates := template.Must(template.ParseFiles("templates/index.html"))
 
-	session, err := mgo.Dial("127.0.0.1:27017")
-	if err != nil {
-		panic(err)
-	}
-
-	defer session.Close()
-
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		p := Page{Name: "Tomek"}
 
 		if name := r.FormValue("name"); name != "" {
 			p.Name = name
 		}
-
-		p.MongoStatus = session.Ping() == nil
 
 		if err := templates.ExecuteTemplate(w, "index.html", p); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
