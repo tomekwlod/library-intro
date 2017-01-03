@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"html/template"
 	"net/http"
 
@@ -12,9 +11,14 @@ import (
 	"encoding/xml"
 	"io/ioutil"
 	"net/url"
+
+	"github.com/codegangsta/negroni"
 )
 
-var db *mgo.Database
+var (
+	mgoSession   *mgo.Session
+	databaseName = "go"
+)
 
 type Page struct {
 	Name string
@@ -50,10 +54,26 @@ type BookDocument struct {
 	Classification string
 }
 
+func getMongoSession() *mgo.Session {
+	if mgoSession == nil {
+		var err error
+
+		mgoSession, err = mgo.Dial("127.0.0.1:27017")
+
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	return mgoSession.Copy()
+}
+
 func main() {
 	templates := template.Must(template.ParseFiles("templates/index.html"))
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		p := Page{Name: "Tomek"}
 
 		if name := r.FormValue("name"); name != "" {
@@ -65,7 +85,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
 		var results []SearchResult
 		var err error
 
@@ -79,7 +99,7 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/books/add", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/books/add", func(w http.ResponseWriter, r *http.Request) {
 		var book ClassifyBookResponse
 		var bookDocument BookDocument
 		var err error
@@ -99,7 +119,9 @@ func main() {
 		}
 	})
 
-	fmt.Println(http.ListenAndServe(":8080", nil))
+	n := negroni.Classic()
+	n.UseHandler(mux)
+	n.Run(":8080")
 }
 
 func find(id string) (ClassifyBookResponse, error) {
@@ -142,39 +164,33 @@ func classifyAPI(url string) ([]byte, error) {
 }
 
 func insertBook(book ClassifyBookResponse) (BookDocument, error) {
-	session, err := mgo.Dial("127.0.0.1:27017")
-
-	if err != nil {
-		panic(err)
-	}
-
+	session := getMongoSession()
 	defer session.Close()
 
-	if err = session.Ping(); err != nil {
+	if err := session.Ping(); err != nil {
 		return BookDocument{}, err
 	}
 
 	session.SetMode(mgo.Monotonic, true)
 
-	c := session.DB("library").C("book")
+	collection := session.DB("library").C("book")
 
-	var counter int
-	counter, err = c.Find(bson.M{"owi": book.BookData.ID}).Count()
+	counter, err := collection.Find(bson.M{"owi": book.BookData.ID}).Count()
 
 	bookDocument := BookDocument{}
 	if counter > 0 {
-		err = c.Find(bson.M{"owi": book.BookData.ID}).One(&bookDocument)
+		err = collection.Find(bson.M{"owi": book.BookData.ID}).One(&bookDocument)
 
 		return bookDocument, err
 	}
 
-	err = c.Insert(&BookDocument{Title: book.BookData.Title, Author: book.BookData.Author, Owi: book.BookData.ID, Classification: book.Classification.MostPopular})
+	err = collection.Insert(&BookDocument{Title: book.BookData.Title, Author: book.BookData.Author, Owi: book.BookData.ID, Classification: book.Classification.MostPopular})
 
 	if err != nil {
 		return BookDocument{}, err
 	}
 
-	err = c.Find(bson.M{"owi": book.BookData.ID}).One(&bookDocument)
+	err = collection.Find(bson.M{"owi": book.BookData.ID}).One(&bookDocument)
 
 	if err != nil {
 		return BookDocument{}, err
