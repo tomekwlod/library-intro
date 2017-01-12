@@ -8,22 +8,51 @@
         </style>
     </head>
     <body>
-        <form id="search-form" onsubmit="return false;">
-            <input name="search" />
-            <input type="submit" value="Search" onclick="submitSearch()" />
-        </form>
+        <div>
+            <form id="search-form" onsubmit="return false;">
+                <input name="search" />
+                <input type="submit" value="Search" onclick="submitSearch()" />
+            </form>
+        </div>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Title</th>
-                    <th>Author</th>
-                    <th>Year</th>
-                    <th>Id</th>
-                </tr>
-            </thead>
-            <tbody id="search-results"></tbody>
-        </table>
+        <div style="margin-top:10px; border:1px solid grey;">
+            <h3>Search result:</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Author</th>
+                        <th>Year</th>
+                        <th>Id</th>
+                    </tr>
+                </thead>
+                <tbody id="search-results"></tbody>
+            </table>
+        </div>
+
+        <div style="margin-top:10px; border:1px solid grey;">
+            <h3>ALREADY SAVED POSITIONS:</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Author</th>
+                        <th>Classification</th>
+                        <th>Owi</th>
+                    </tr>
+                </thead>
+                <tbody id="view-results">
+                    {{range .Books}}
+                        <tr>
+                            <td>{{.Title}}</td>
+                            <td>{{.Author}}</td>
+                            <td>{{.Classification}}</td>
+                            <td>{{.Owi}}</td>
+                        </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
 
         <script type="text/javascript" src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
         <script type="text/javascript">
@@ -50,7 +79,16 @@
                             row.on("click", function() {
                                 $.ajax({
                                     url: "/books/add?id=" + result.ID,
-                                    method: "GET"
+                                    method: "GET",
+                                    success: function(data) {
+                                        var book = JSON.parse(data);
+
+                                        if (!book) {
+                                            return false;
+                                        }
+
+                                        $("#view-results").append("<tr><td>" + book.Title + "</td><td>" + book.Author + "</td><td>" + book.Classification + "</td><td>" + book.Owi + "</td></tr>");
+                                    }
                                 })
                             });
                         });

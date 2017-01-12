@@ -17,11 +17,11 @@ import (
 
 var (
 	mgoSession   *mgo.Session
-	databaseName = "go"
+	databaseName = "library"
 )
 
 type Page struct {
-	Name string
+	Books []BookDocument
 }
 
 type SearchResult struct {
@@ -74,11 +74,15 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		p := Page{Name: "Tomek"}
+		p := Page{}
 
-		if name := r.FormValue("name"); name != "" {
-			p.Name = name
+		books, err := findBooks()
+
+		if err != nil {
+			panic(err)
 		}
+
+		p.Books = books
 
 		if err := templates.ExecuteTemplate(w, "index.html", p); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -179,9 +183,8 @@ func insertBook(book ClassifyBookResponse) (BookDocument, error) {
 
 	bookDocument := BookDocument{}
 	if counter > 0 {
-		err = collection.Find(bson.M{"owi": book.BookData.ID}).One(&bookDocument)
-
-		return bookDocument, err
+		// i am not sure if it's a correct logic to send no response to a frontend in this case
+		panic(nil)
 	}
 
 	err = collection.Insert(&BookDocument{Title: book.BookData.Title, Author: book.BookData.Author, Owi: book.BookData.ID, Classification: book.Classification.MostPopular})
@@ -197,4 +200,27 @@ func insertBook(book ClassifyBookResponse) (BookDocument, error) {
 	}
 
 	return bookDocument, err
+}
+
+func findBooks() ([]BookDocument, error) {
+	session := getMongoSession()
+	defer session.Close()
+	var results []BookDocument
+	var err error
+
+	if err = session.Ping(); err != nil {
+		return []BookDocument{}, err
+	}
+
+	session.SetMode(mgo.Monotonic, true)
+
+	collection := session.DB("library").C("book")
+
+	err = collection.Find(bson.M{}).All(&results)
+
+	if err != nil {
+		return []BookDocument{}, err
+	}
+
+	return results, err
 }
