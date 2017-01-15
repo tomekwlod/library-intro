@@ -123,6 +123,15 @@ func main() {
 		}
 	})
 
+	mux.HandleFunc("/books/remove", func(w http.ResponseWriter, r *http.Request) {
+		if err := removeBook(r.FormValue("owi")); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
+
 	n := negroni.Classic()
 	n.UseHandler(mux)
 	n.Run(":8080")
@@ -200,6 +209,23 @@ func insertBook(book ClassifyBookResponse) (BookDocument, error) {
 	}
 
 	return bookDocument, err
+}
+
+func removeBook(owi string) error {
+	session := getMongoSession()
+	defer session.Close()
+
+	if err := session.Ping(); err != nil {
+		return err
+	}
+
+	session.SetMode(mgo.Monotonic, true)
+
+	collection := session.DB("library").C("book")
+
+	_, err := collection.RemoveAll(bson.M{"owi": owi})
+
+	return err
 }
 
 func findBooks() ([]BookDocument, error) {

@@ -39,15 +39,17 @@
                         <th>Author</th>
                         <th>Classification</th>
                         <th>Owi</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody id="view-results">
                     {{range .Books}}
-                        <tr>
+                        <tr id="row-{{.Owi}}">
                             <td>{{.Title}}</td>
                             <td>{{.Author}}</td>
                             <td>{{.Classification}}</td>
                             <td>{{.Owi}}</td>
+                            <td><button onclick="deleteOne({{.Owi}})">Delete</button></td>
                         </tr>
                     {{end}}
                 </tbody>
@@ -56,8 +58,18 @@
 
         <script type="text/javascript" src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
         <script type="text/javascript">
+            function deleteOne(owi) {
+                $.ajax({
+                    url: "/books/remove?owi=" + owi,
+                    method: "GET",
+                    success: function() {
+                        $("#row-" + owi).remove();
+                    }
+                });
+
+                return false;
+            }
             function submitSearch() {
-                
                 $.ajax({
                     url: "/search",
                     method: "POST",
@@ -87,7 +99,7 @@
                                             return false;
                                         }
 
-                                        $("#view-results").append("<tr><td>" + book.Title + "</td><td>" + book.Author + "</td><td>" + book.Classification + "</td><td>" + book.Owi + "</td></tr>");
+                                        $("#view-results").append("<tr id=\"row-" + book.Owi + "\"><td>" + book.Title + "</td><td>" + book.Author + "</td><td>" + book.Classification + "</td><td>" + book.Owi + "</td><td><button onclick=\"deleteOne(" + book.Owi + ")\">Delete</button></td></tr>");
                                     }
                                 })
                             });
