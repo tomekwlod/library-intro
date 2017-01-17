@@ -13,6 +13,7 @@ import (
 	"net/url"
 
 	"github.com/codegangsta/negroni"
+	gmux "github.com/gorilla/mux"
 )
 
 var (
@@ -71,7 +72,7 @@ func getMongoSession() *mgo.Session {
 func main() {
 	templates := template.Must(template.ParseFiles("templates/index.html"))
 
-	mux := http.NewServeMux()
+	mux := gmux.NewRouter()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		p := Page{}
@@ -87,7 +88,7 @@ func main() {
 		if err := templates.ExecuteTemplate(w, "index.html", p); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-	})
+	}).Methods("GET")
 
 	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
 		var results []SearchResult
@@ -101,14 +102,14 @@ func main() {
 		if err := encoder.Encode(results); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-	})
+	}).Methods("POST")
 
-	mux.HandleFunc("/books/add", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/books/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var book ClassifyBookResponse
 		var bookDocument BookDocument
 		var err error
 
-		if book, err = find(r.FormValue("id")); err != nil {
+		if book, err = find(gmux.Vars(r)["id"]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 
@@ -121,16 +122,16 @@ func main() {
 		if err = encoder.Encode(bookDocument); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-	})
+	}).Methods("PUT")
 
-	mux.HandleFunc("/books/remove", func(w http.ResponseWriter, r *http.Request) {
-		if err := removeBook(r.FormValue("owi")); err != nil {
+	mux.HandleFunc("/books/{owi}", func(w http.ResponseWriter, r *http.Request) {
+		if err := removeBook(gmux.Vars(r)["owi"]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-	})
+	}).Methods("DELETE")
 
 	n := negroni.Classic()
 	n.UseHandler(mux)

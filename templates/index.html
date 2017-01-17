@@ -60,8 +60,8 @@
         <script type="text/javascript">
             function deleteOne(owi) {
                 $.ajax({
-                    url: "/books/remove?owi=" + owi,
-                    method: "GET",
+                    url: "/books/" + owi,
+                    method: "DELETE",
                     success: function() {
                         $("#row-" + owi).remove();
                     }
@@ -90,8 +90,8 @@
 
                             row.on("click", function() {
                                 $.ajax({
-                                    url: "/books/add?id=" + result.ID,
-                                    method: "GET",
+                                    url: "/books/" + result.ID,
+                                    method: "PUT",
                                     success: function(data) {
                                         var book = JSON.parse(data);
 
