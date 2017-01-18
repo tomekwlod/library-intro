@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"gopkg.in/mgo.v2/bson"
-	"labix.org/v2/mgo"
 
 	"encoding/json"
 	"encoding/xml"
@@ -14,16 +13,13 @@ import (
 
 	"github.com/codegangsta/negroni"
 	gmux "github.com/gorilla/mux"
+
+	"log"
+
+	"github.com/maxwellhealth/bongo"
 )
 
-var (
-	mgoSession   *mgo.Session
-	databaseName = "library"
-)
-
-type Page struct {
-	Books []BookDocument
-}
+var Connections *bongo.Connection
 
 type SearchResult struct {
 	Title  string `xml:"title,attr"`
@@ -48,44 +44,33 @@ type ClassifyBookResponse struct {
 }
 
 type BookDocument struct {
-	ID             bson.ObjectId `bson:"_id,omitempty"`
-	Title          string
-	Author         string
-	Owi            string
-	Classification string
+	bongo.DocumentBase `bson:",inline"`
+	Title              string
+	Author             string
+	Owi                string
+	Classification     string
 }
 
-func getMongoSession() *mgo.Session {
-	if mgoSession == nil {
-		var err error
-
-		mgoSession, err = mgo.Dial("127.0.0.1:27017")
-
-		if err != nil {
-			panic(err)
-		}
+func MongoConnect() {
+	config := &bongo.Config{
+		ConnectionString: "127.0.0.1:27017", //or just localhost
+		Database:         "library",
 	}
 
-	return mgoSession.Copy()
+	Connections, _ = bongo.Connect(config)
 }
 
 func main() {
+	MongoConnect()
+
 	templates := template.Must(template.ParseFiles("templates/index.html"))
 
 	mux := gmux.NewRouter()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		p := Page{}
+		books := findBooks()
 
-		books, err := findBooks()
-
-		if err != nil {
-			panic(err)
-		}
-
-		p.Books = books
-
-		if err := templates.ExecuteTemplate(w, "index.html", p); err != nil {
+		if err := templates.ExecuteTemplate(w, "index.html", books); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}).Methods("GET")
@@ -178,76 +163,48 @@ func classifyAPI(url string) ([]byte, error) {
 }
 
 func insertBook(book ClassifyBookResponse) (BookDocument, error) {
-	session := getMongoSession()
-	defer session.Close()
-
-	if err := session.Ping(); err != nil {
-		return BookDocument{}, err
-	}
-
-	session.SetMode(mgo.Monotonic, true)
-
-	collection := session.DB("library").C("book")
-
-	counter, err := collection.Find(bson.M{"owi": book.BookData.ID}).Count()
-
 	bookDocument := BookDocument{}
-	if counter > 0 {
-		// i am not sure if it's a correct logic to send no response to a frontend in this case
-		panic(nil)
+
+	err := Connections.Collection("book").FindOne(bson.M{"owi": book.BookData.ID}, &bookDocument)
+
+	if err == nil {
+		log.Printf("Document already in the db [%s]", bookDocument.Owi)
+		return bookDocument, err
 	}
 
-	err = collection.Insert(&BookDocument{Title: book.BookData.Title, Author: book.BookData.Author, Owi: book.BookData.ID, Classification: book.Classification.MostPopular})
+	log.Printf("Inserting new element [%s]", book.BookData.ID)
 
-	if err != nil {
-		return BookDocument{}, err
-	}
-
-	err = collection.Find(bson.M{"owi": book.BookData.ID}).One(&bookDocument)
-
-	if err != nil {
-		return BookDocument{}, err
-	}
+	err = Connections.Collection("book").Save(&BookDocument{
+		Title:          book.BookData.Title,
+		Author:         book.BookData.Author,
+		Owi:            book.BookData.ID,
+		Classification: book.Classification.MostPopular})
 
 	return bookDocument, err
 }
 
 func removeBook(owi string) error {
-	session := getMongoSession()
-	defer session.Close()
+	changeInfo, err := Connections.Collection("book").Delete(bson.M{"owi": owi})
 
-	if err := session.Ping(); err != nil {
-		return err
+	if err != nil {
+		panic(err)
 	}
 
-	session.SetMode(mgo.Monotonic, true)
-
-	collection := session.DB("library").C("book")
-
-	_, err := collection.RemoveAll(bson.M{"owi": owi})
+	log.Printf("Deleted %d documents", changeInfo.Removed)
 
 	return err
 }
 
-func findBooks() ([]BookDocument, error) {
-	session := getMongoSession()
-	defer session.Close()
-	var results []BookDocument
-	var err error
+func findBooks() []BookDocument {
+	result := Connections.Collection("book").Find(bson.M{})
 
-	if err = session.Ping(); err != nil {
-		return []BookDocument{}, err
+	book := BookDocument{}
+
+	var books []BookDocument
+
+	for result.Next(&book) {
+		books = append(books, book)
 	}
 
-	session.SetMode(mgo.Monotonic, true)
-
-	collection := session.DB("library").C("book")
-
-	err = collection.Find(bson.M{}).All(&results)
-
-	if err != nil {
-		return []BookDocument{}, err
-	}
-
-	return results, err
+	return books
 }
