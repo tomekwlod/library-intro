@@ -5,9 +5,14 @@
                 background-color: lightgray;
                 cursor: pointer;
             }
+            #user-info {
+                text-align: right;
+                color: grey;
+            }
         </style>
     </head>
     <body>
+        <div id="user-info">Your're logged in as {{.User}} <a href="/logout">(log out)</a></div>
         <div>
             <form id="search-form" onsubmit="return false;">
                 <input name="search" />
@@ -43,7 +48,7 @@
                     </tr>
                 </thead>
                 <tbody id="view-results">
-                    {{range .}}
+                    {{range .Books}}
                         <tr id="row-{{.Owi}}">
                             <td>{{.Title}}</td>
                             <td>{{.Author}}</td>

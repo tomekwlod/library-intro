@@ -11,15 +11,30 @@ import (
 	"io/ioutil"
 	"net/url"
 
-	"github.com/codegangsta/negroni"
+	"github.com/goincremental/negroni-sessions"
+	"github.com/goincremental/negroni-sessions/cookiestore"
+	"github.com/urfave/negroni"
+
 	gmux "github.com/gorilla/mux"
 
 	"log"
 
+	"fmt"
+
 	"github.com/maxwellhealth/bongo"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var Connections *bongo.Connection
+
+type PageData struct {
+	Books []BookDocument
+	User  string
+}
+
+type LoginPageData struct {
+	Error string
+}
 
 type SearchResult struct {
 	Title  string `xml:"title,attr"`
@@ -51,6 +66,12 @@ type BookDocument struct {
 	Classification     string
 }
 
+type UserDocument struct {
+	bongo.DocumentBase `bson:",inline"`
+	Username           string
+	Secret             []byte
+}
+
 func MongoConnect() {
 	config := &bongo.Config{
 		ConnectionString: "127.0.0.1:27017", //or just localhost
@@ -60,17 +81,109 @@ func MongoConnect() {
 	Connections, _ = bongo.Connect(config)
 }
 
+func getStringFromSession(r *http.Request, key string) string {
+	var value string
+	if val := sessions.GetSession(r).Get(key); val != nil {
+		value = val.(string)
+	}
+	return value
+}
+
+func verifyUser(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+	if r.URL.Path == "/login" {
+		next(w, r)
+		return
+	}
+
+	if username := getStringFromSession(r, "User"); username != "" {
+		if err := Connections.Collection("user").FindOne(bson.M{"username": username}, &UserDocument{}); err == nil {
+			next(w, r)
+			return
+		}
+	}
+
+	http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
+}
+
 func main() {
 	MongoConnect()
 
-	templates := template.Must(template.ParseFiles("templates/index.html"))
+	n := negroni.Classic()
+	n.Use(sessions.Sessions("library", cookiestore.New([]byte("secret123"))))
+	n.Use(negroni.HandlerFunc(verifyUser))
 
 	mux := gmux.NewRouter()
+
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		var page LoginPageData
+
+		if r.FormValue("register") != "" {
+			// for registration
+
+			err := Connections.Collection("user").FindOne(bson.M{"username": r.FormValue("username")}, &UserDocument{})
+
+			if err == nil {
+				page.Error = "Username already in the database. Please login instead"
+			} else {
+				secret, _ := bcrypt.GenerateFromPassword([]byte(r.FormValue("password")), bcrypt.DefaultCost)
+
+				user := &UserDocument{
+					Username: r.FormValue("username"),
+					Secret:   secret,
+				}
+
+				err = Connections.Collection("user").Save(user)
+
+				if err != nil {
+					page.Error = err.Error()
+				} else {
+					sessions.GetSession(r).Set("User", user.Username)
+
+					http.Redirect(w, r, "/", http.StatusFound)
+					return
+				}
+			}
+
+		} else if r.FormValue("login") != "" {
+			// for loging in
+
+			user := &UserDocument{}
+			err := Connections.Collection("user").FindOne(bson.M{"username": r.FormValue("username")}, user)
+
+			if err != nil {
+				page.Error = err.Error()
+			} else {
+				if err = bcrypt.CompareHashAndPassword(user.Secret, []byte(r.FormValue("password"))); err != nil {
+					page.Error = err.Error()
+					fmt.Println(err.Error())
+				} else {
+					sessions.GetSession(r).Set("User", user.Username)
+
+					http.Redirect(w, r, "/", http.StatusFound)
+					return
+				}
+			}
+		}
+
+		template := template.Must(template.ParseFiles("templates/login.html"))
+
+		if err := template.ExecuteTemplate(w, "login.html", page); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}).Methods("GET")
+
+	mux.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
+		sessions.GetSession(r).Set("User", nil)
+
+		http.Redirect(w, r, "/login", http.StatusFound)
+	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		books := findBooks()
 
-		if err := templates.ExecuteTemplate(w, "index.html", books); err != nil {
+		templates := template.Must(template.ParseFiles("templates/index.html"))
+
+		if err := templates.ExecuteTemplate(w, "index.html", &PageData{Books: books, User: getStringFromSession(r, "User")}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}).Methods("GET")
@@ -118,7 +231,6 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	}).Methods("DELETE")
 
-	n := negroni.Classic()
 	n.UseHandler(mux)
 	n.Run(":8080")
 }
